@@ -206,15 +206,22 @@ class AHNextOrderEditDeadlineSensor(AHBaseSensor):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the closing time as a timestamp."""
+        """Return the closing time of the next modifiable order."""
         data: AlbertHeijnData = self.coordinator.data
-        if data.order_details and data.order_details.closing_time:
-            try:
-                return datetime.fromisoformat(
-                    data.order_details.closing_time.replace("Z", "+00:00")
-                )
-            except ValueError:
-                return None
+        sorted_fulfillments = sorted(
+            data.fulfillments, key=lambda f: f.delivery_slot.date
+        )
+        for f in sorted_fulfillments:
+            if not f.modifiable:
+                continue
+            details = data.all_order_details.get(f.order_id)
+            if details and details.closing_time:
+                try:
+                    return datetime.fromisoformat(
+                        details.closing_time.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    continue
         return None
 
     @property

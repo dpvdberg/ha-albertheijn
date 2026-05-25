@@ -40,14 +40,11 @@ class AlbertHeijnOrdersCard extends HTMLElement {
     // Sort by delivery date
     const sorted = [...orders].sort((a, b) => a.delivery_date.localeCompare(b.delivery_date));
 
-    // Find the first non-finalized order's deadline
-    let firstDeadline = null;
-    for (const order of sorted) {
-      if (order.modifiable && order.items === 0 && order.closing_time) {
-        firstDeadline = order.closing_time;
-        break;
-      }
-    }
+    // Get deadline from the dedicated sensor
+    const deadlineEntity = this._hass.states["sensor.albert_heijn_next_order_edit_deadline"];
+    const firstDeadline = deadlineEntity && deadlineEntity.state !== "unknown" && deadlineEntity.state !== "unavailable"
+      ? deadlineEntity.state
+      : null;
 
     this.innerHTML = `
       <ha-card>
@@ -55,7 +52,10 @@ class AlbertHeijnOrdersCard extends HTMLElement {
           <div class="name">
             <span class="ah-icon">🛒</span> Albert Heijn Orders
           </div>
-          ${firstDeadline ? `<div class="deadline">⏰ ${this._formatDeadline(firstDeadline, now)}</div>` : ""}
+          <div class="header-actions">
+            ${firstDeadline ? `<span class="deadline">⏰ ${this._formatDeadline(firstDeadline, now)}</span>` : ""}
+            <button class="refresh-btn" title="Ververs">↻</button>
+          </div>
         </div>
         <div class="card-content">
           ${sorted.length === 0 ? '<div class="empty">Geen bestellingen</div>' : ""}
@@ -79,6 +79,33 @@ class AlbertHeijnOrdersCard extends HTMLElement {
         .card-header .name {
           font-size: 1.1em;
           font-weight: 500;
+        }
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .refresh-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 1.3em;
+          padding: 4px 6px;
+          border-radius: 50%;
+          color: var(--primary-text-color);
+          opacity: 0.6;
+          transition: opacity 0.2s, transform 0.3s;
+        }
+        .refresh-btn:hover {
+          opacity: 1;
+          background: var(--secondary-background-color, #f0f0f0);
+        }
+        .refresh-btn.spinning {
+          animation: spin 0.8s linear;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
         .ah-icon {
           font-size: 1.2em;
@@ -154,6 +181,20 @@ class AlbertHeijnOrdersCard extends HTMLElement {
         }
       </style>
     `;
+
+    // Attach refresh button handler
+    const btn = this.querySelector(".refresh-btn");
+    if (btn) {
+      btn.addEventListener("click", () => this._refresh(btn));
+    }
+  }
+
+  _refresh(btn) {
+    btn.classList.add("spinning");
+    setTimeout(() => btn.classList.remove("spinning"), 800);
+    this._hass.callService("homeassistant", "update_entity", {
+      entity_id: this._entityId,
+    });
   }
 
   _renderOrder(order, now) {
