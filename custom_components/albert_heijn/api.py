@@ -97,6 +97,18 @@ class Product:
 
 
 @dataclass
+class OrderItem:
+    """An item in an order."""
+
+    product_id: int
+    title: str
+    brand: str
+    quantity: int
+    price: float
+    unit_size: str
+
+
+@dataclass
 class AlbertHeijnData:
     """Container for all data fetched from the API."""
 
@@ -327,6 +339,29 @@ class AlbertHeijnApi:
             reopenable=data.get("reopenable", False),
             order_method=data.get("orderMethod"),
         )
+
+    async def get_order_items(self, order_id: int) -> list[OrderItem]:
+        """Get the list of items in an order."""
+        data = await self._request(
+            "GET",
+            f"/mobile-services/order/v1/{order_id}/details-grouped-by-taxonomy",
+        )
+
+        items: list[OrderItem] = []
+        for group in data.get("groupedProductsInTaxonomy", []):
+            for op in group.get("orderedProducts", []):
+                product = op.get("product", {})
+                items.append(
+                    OrderItem(
+                        product_id=product.get("webshopId", 0),
+                        title=product.get("title", ""),
+                        brand=product.get("brand", ""),
+                        quantity=op.get("quantity", 1),
+                        price=product.get("currentPrice") or product.get("priceBeforeBonus", 0),
+                        unit_size=product.get("salesUnitSize", ""),
+                    )
+                )
+        return items
 
     async def get_order_value_limits(self, order_id: int) -> OrderValueLimits:
         """Get minimum order value limits for an order."""

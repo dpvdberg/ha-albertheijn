@@ -1,11 +1,46 @@
 language: en
 intents:
+  AlbertHeijnSearchProducts:
+    data:
+      - sentences:
+          - "search product code for {query} at albert heijn"
+          - "search product code for {query} [products]"
+          - "find product code for {query} [at albert heijn]"
+          - "look up product code for {query}"
+  AlbertHeijnAddToOrder:
+    data:
+      - sentences:
+          - "add product code {product_id} to [my] order"
+          - "add {quantity} of product code {product_id} to [my] order"
+          - "order product code {product_id}"
+          - "add product code {product_id}"
+  AlbertHeijnListOrderItems:
+    data:
+      - sentences:
+          - "what's in [my] [albert heijn] order"
+          - "show [my] order"
+          - "list [my] order [items]"
+          - "what [products] have I ordered"
+  AlbertHeijnRemoveFromOrder:
+    data:
+      - sentences:
+          - "remove product code {product_id} from [my] order"
+          - "delete product code {product_id} from [my] order"
+          - "product code {product_id} remove"
   AlbertHeijnOrderStatus:
     data:
       - sentences:
           - "[what is] [the] status [of] [my] [albert heijn] order"
           - "when will [my] groceries be delivered"
           - "when is [my] [next] delivery"
-          - "what's in [my] order"
           - "[albert heijn|grocery] delivery status"
+lists:
+  query:
+    wildcard: true
+  product_id:
+    wildcard: true
+  quantity:
+    range:
+      from: 1
+      to: 99
 
