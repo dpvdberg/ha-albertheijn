@@ -16,38 +16,15 @@ async def main() -> None:
     import logging
     logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
 
-    from aiohttp import web
-    from auth import (
-        PROXY_PATH,
-        AuthenticationError,
-        async_refresh_token,
-        create_login_session,
-        exchange_code,
-        handle_login_fallback,
-        handle_proxy_request,
-        remove_login_session,
-    )
+    from auth import AuthenticationError, LoginProxy, async_refresh_token, exchange_code
 
     print("=== Albert Heijn Login Test (Browser-based) ===\n")
     print("Starting local login proxy...")
 
-    # For standalone testing, create a local aiohttp app
-    app = web.Application()
-    app.router.add_route("*", PROXY_PATH + "/{session_id}/{path_info:.*}", handle_proxy_request)
-    app.router.add_route("*", "/login/{path_info:.*}", handle_login_fallback)
+    proxy = LoginProxy(hostname="127.0.0.1")
+    login_url = await proxy.start()
 
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-
-    port = site._server.sockets[0].getsockname()[1]
-    base_url = f"http://127.0.0.1:{port}"
-
-    session = create_login_session(base_url)
-    login_url = session.login_url
-
-    print(f"\nProxy running at {base_url}")
+    print(f"\nProxy running on port {proxy.port}")
     print(f"Opening browser to: {login_url}\n")
     print("Please log in to Albert Heijn in your browser.")
     print("Waiting for login callback (timeout: 5 minutes)...\n")
@@ -55,17 +32,15 @@ async def main() -> None:
     webbrowser.open(login_url)
 
     try:
-        code = await asyncio.wait_for(session.code_future, timeout=300)
+        code = await proxy.wait_for_code(timeout=300)
         print(f"Auth code received (length={len(code)})")
     except asyncio.TimeoutError:
         print("Login timed out (5 minutes)")
-        remove_login_session(session.session_id)
-        await runner.cleanup()
+        await proxy.stop()
         sys.exit(1)
     except Exception as e:
         print(f"Error waiting for code: {e}")
-        remove_login_session(session.session_id)
-        await runner.cleanup()
+        await proxy.stop()
         sys.exit(1)
 
     print("\nExchanging code for tokens...")
@@ -73,12 +48,10 @@ async def main() -> None:
         tokens = await exchange_code(code)
     except AuthenticationError as e:
         print(f"Token exchange failed: {e}")
-        remove_login_session(session.session_id)
-        await runner.cleanup()
+        await proxy.stop()
         sys.exit(1)
 
-    remove_login_session(session.session_id)
-    await runner.cleanup()
+    await proxy.stop()
 
     print("\nLogin successful!")
     print(f"  Access token:  {tokens['access_token'][:40]}...")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import voluptuous as vol
 
@@ -15,10 +16,9 @@ from homeassistant.helpers.network import get_url
 from .api import AlbertHeijnApi, AlbertHeijnAuthError
 from .auth import (
     AuthenticationError,
+    LoginProxy,
     async_refresh_token,
-    create_login_session,
     exchange_code,
-    remove_login_session,
 )
 from .const import (
     CONF_ACCESS_TOKEN,
@@ -40,7 +40,7 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._session_id: str | None = None
+        self._proxy: LoginProxy | None = None
         self._tokens: dict[str, str] | None = None
         self._login_task: asyncio.Task | None = None
 
@@ -62,28 +62,22 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Start the login proxy and show the external auth step."""
-        # Ensure proxy views are registered (needed on first-time setup
-        # when async_setup hasn't been called yet)
-        from . import _register_proxy_views
+        # Extract the hostname from HA's URL to use for the proxy
+        ha_url = get_url(self.hass)
+        hostname = urlparse(ha_url).hostname or "127.0.0.1"
 
-        _register_proxy_views(self.hass)
-
-        ha_base_url = get_url(self.hass)
-        session = create_login_session(ha_base_url)
-        self._session_id = session.session_id
-        login_url = session.login_url
+        self._proxy = LoginProxy(hostname=hostname)
+        login_url = await self._proxy.start()
 
         # Start background task to wait for the auth code
-        self._login_task = asyncio.ensure_future(self._wait_for_login(session))
+        self._login_task = asyncio.ensure_future(self._wait_for_login())
 
         return self.async_external_step(step_id="login", url=login_url)
 
-    async def _wait_for_login(self, session) -> None:
+    async def _wait_for_login(self) -> None:
         """Wait for the user to complete login in the browser."""
         try:
-            code = await asyncio.wait_for(
-                session.code_future, timeout=LOGIN_TIMEOUT
-            )
+            code = await self._proxy.wait_for_code(timeout=LOGIN_TIMEOUT)
             self._tokens = await exchange_code(code)
         except asyncio.TimeoutError:
             _LOGGER.warning("Login timed out waiting for user")
@@ -95,8 +89,8 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected error during login")
             self._tokens = None
         finally:
-            if self._session_id:
-                remove_login_session(self._session_id)
+            if self._proxy:
+                await self._proxy.stop()
 
     async def async_step_login_done(
         self, user_input: dict[str, Any] | None = None

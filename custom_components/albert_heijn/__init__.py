@@ -5,12 +5,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .auth import PROXY_PATH, handle_login_fallback, handle_proxy_request
 from .const import DOMAIN
 from .coordinator import AlbertHeijnCoordinator
 from .intents import async_setup_intents
@@ -23,60 +21,10 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 CARD_URL = "/local/community/albert_heijn/albert-heijn-orders-card.js"
 
 
-class AlbertHeijnLoginProxyView(HomeAssistantView):
-    """View to handle the login proxy requests."""
-
-    url = PROXY_PATH + "/{session_id}/{path_info:.*}"
-    name = "api:albert_heijn:login_proxy"
-    requires_auth = False
-
-    async def _handle(self, request, session_id, path_info):
-        """Forward to the proxy handler."""
-        return await handle_proxy_request(request)
-
-    get = _handle
-    post = _handle
-    put = _handle
-    delete = _handle
-    patch = _handle
-    head = _handle
-    options = _handle
-
-
-class AlbertHeijnLoginFallbackView(HomeAssistantView):
-    """Catch-all for /login/... paths from AH's hardcoded JS URLs."""
-
-    url = "/login/{path_info:.*}"
-    name = "api:albert_heijn:login_fallback"
-    requires_auth = False
-
-    async def _handle(self, request, path_info):
-        """Forward to the fallback handler."""
-        return await handle_login_fallback(request)
-
-    get = _handle
-    post = _handle
-    put = _handle
-    delete = _handle
-    patch = _handle
-    head = _handle
-    options = _handle
-
-
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Albert Heijn integration."""
     hass.data.setdefault(DOMAIN, {})
-    _register_proxy_views(hass)
     return True
-
-
-def _register_proxy_views(hass: HomeAssistant) -> None:
-    """Register the login proxy views (idempotent)."""
-    if hass.data.get(f"{DOMAIN}_views_registered"):
-        return
-    hass.http.register_view(AlbertHeijnLoginProxyView)
-    hass.http.register_view(AlbertHeijnLoginFallbackView)
-    hass.data[f"{DOMAIN}_views_registered"] = True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
