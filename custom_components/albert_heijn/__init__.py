@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import shutil
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -18,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
-CARD_URL = "/local/community/albert_heijn/albert-heijn-orders-card.js"
+CARD_FILENAME = "albert-heijn-orders-card.js"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -41,14 +42,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_setup_services(hass)
         await async_setup_intents(hass)
 
-        # Register the custom card JS
-        hass.http.register_static_path(
-            "/local/community/albert_heijn/albert-heijn-orders-card.js",
-            str(Path(__file__).parent / "www" / "albert-heijn-orders-card.js"),
-            cache_headers=False,
-        )
+        # Copy the Lovelace card to www/ so it's served at /local/
+        await hass.async_add_executor_job(_install_card, hass.config.path("www"))
 
     return True
+
+
+def _install_card(www_dir: str) -> None:
+    """Copy the card JS file to HA's www/community/albert_heijn directory."""
+    dest_dir = Path(www_dir) / "community" / "albert_heijn"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    source = Path(__file__).parent / "www" / CARD_FILENAME
+    dest = dest_dir / CARD_FILENAME
+    if source.exists():
+        shutil.copy2(source, dest)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
