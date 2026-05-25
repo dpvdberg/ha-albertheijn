@@ -62,6 +62,12 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Start the login proxy and show the external auth step."""
+        # Ensure proxy views are registered (needed on first-time setup
+        # when async_setup hasn't been called yet)
+        from . import _register_proxy_views
+
+        _register_proxy_views(self.hass)
+
         ha_base_url = get_url(self.hass)
         session = create_login_session(ha_base_url)
         self._session_id = session.session_id

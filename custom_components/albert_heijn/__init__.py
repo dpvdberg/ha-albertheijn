@@ -66,12 +66,17 @@ class AlbertHeijnLoginFallbackView(HomeAssistantView):
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Albert Heijn integration."""
     hass.data.setdefault(DOMAIN, {})
+    _register_proxy_views(hass)
+    return True
 
-    # Register the login proxy views (must happen before router freezes)
+
+def _register_proxy_views(hass: HomeAssistant) -> None:
+    """Register the login proxy views (idempotent)."""
+    if hass.data.get(f"{DOMAIN}_views_registered"):
+        return
     hass.http.register_view(AlbertHeijnLoginProxyView)
     hass.http.register_view(AlbertHeijnLoginFallbackView)
-
-    return True
+    hass.data[f"{DOMAIN}_views_registered"] = True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
