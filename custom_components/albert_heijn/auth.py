@@ -1,7 +1,7 @@
 """Authentication handler for Albert Heijn.
 
 Handles the full login flow and token lifecycle:
-1. Browser-based login via local reverse proxy (user completes captcha in browser)
+1. Browser-based login via reverse proxy on HA's web server (user completes captcha)
 2. Token storage and reuse
 3. Token refresh when expired
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
+import secrets
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -34,6 +34,9 @@ LOGIN_PARAMS = {
 TOKEN_EXCHANGE_URL = f"{_API_BASE_URL}/mobile-auth/v1/auth/token"
 TOKEN_REFRESH_URL = f"{_API_BASE_URL}/mobile-auth/v1/auth/token/refresh"
 
+# Base path for proxy routes registered on HA's web server
+PROXY_PATH = "/auth/external/albert_heijn"
+
 LOGIN_SUCCESS_HTML = """\
 <!DOCTYPE html>
 <html><head><title>Login Successful</title></head>
@@ -48,178 +51,201 @@ class AuthenticationError(Exception):
     """Raised when authentication fails."""
 
 
-class LoginProxy:
-    """Local reverse proxy for browser-based AH login.
+class LoginSession:
+    """An active login session waiting for a browser callback."""
 
-    Starts an HTTP server on localhost that proxies requests to login.ah.nl.
-    Rewrites appie:// redirects to a local /callback endpoint, then exchanges
-    the auth code for tokens.
-    """
-
-    def __init__(self, port: int = 0) -> None:
-        """Initialize the login proxy."""
-        self._port = port
-        self._app: web.Application | None = None
-        self._runner: web.AppRunner | None = None
-        self._site: web.TCPSite | None = None
-        self._code_future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
-        self._local_origin: str = ""
+    def __init__(self, session_id: str, proxy_base_url: str) -> None:
+        self.session_id = session_id
+        self.proxy_base_url = proxy_base_url
+        self.code_future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
 
     @property
     def login_url(self) -> str:
-        """Return the URL to open in the browser."""
+        """URL to open in the user's browser."""
         params = "&".join(f"{k}={v}" for k, v in LOGIN_PARAMS.items())
-        return f"{self._local_origin}/login?{params}"
+        return f"{self.proxy_base_url}/{self.session_id}/login?{params}"
 
-    @property
-    def port(self) -> int:
-        """Return the port the proxy is listening on."""
-        return self._port
 
-    async def start(self) -> str:
-        """Start the proxy server. Returns the login URL."""
-        self._app = web.Application()
-        self._app.router.add_route("GET", "/callback", self._handle_callback)
-        self._app.router.add_route("*", "/{path_info:.*}", self._handle_proxy)
+# Global registry of active login sessions (keyed by session_id)
+_active_sessions: dict[str, LoginSession] = {}
 
-        self._runner = web.AppRunner(self._app)
-        await self._runner.setup()
-        self._site = web.TCPSite(self._runner, "127.0.0.1", self._port)
-        await self._site.start()
 
-        # Get the actual port if 0 was specified
-        sockets = self._site._server.sockets  # type: ignore[attr-defined]
-        if sockets:
-            self._port = sockets[0].getsockname()[1]
-        self._local_origin = f"http://127.0.0.1:{self._port}"
+def create_login_session(ha_base_url: str) -> LoginSession:
+    """Create a new login session and return it."""
+    session_id = secrets.token_hex(16)
+    proxy_base_url = f"{ha_base_url.rstrip('/')}{PROXY_PATH}"
+    session = LoginSession(session_id, proxy_base_url)
+    _active_sessions[session_id] = session
+    _LOGGER.debug("Login session created: %s", session_id)
+    return session
 
-        _LOGGER.debug("Login proxy started at %s", self._local_origin)
-        return self.login_url
 
-    async def wait_for_code(self, timeout: float = 300) -> str:
-        """Wait for the user to complete login. Returns the auth code."""
-        return await asyncio.wait_for(self._code_future, timeout=timeout)
+def remove_login_session(session_id: str) -> None:
+    """Remove a login session."""
+    _active_sessions.pop(session_id, None)
 
-    async def stop(self) -> None:
-        """Stop the proxy server."""
-        if self._runner:
-            await self._runner.cleanup()
-            self._runner = None
 
-    async def exchange_code(self, code: str) -> dict[str, str]:
-        """Exchange the authorization code for tokens."""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                TOKEN_EXCHANGE_URL,
-                json={"clientId": _CLIENT_ID, "code": code},
-                headers={
-                    "User-Agent": _USER_AGENT,
-                    "Content-Type": "application/json",
-                },
-            ) as resp:
-                if resp.status >= 400:
-                    body = await resp.text()
-                    raise AuthenticationError(
-                        f"Token exchange failed ({resp.status}): {body[:200]}"
-                    )
-                data = await resp.json()
+async def handle_login_fallback(request: web.Request) -> web.Response:
+    """Catch-all for /login/... paths that bypass the session prefix.
 
-        return {
-            "access_token": data["access_token"],
-            "refresh_token": data["refresh_token"],
-            "member_id": data.get("member_id", ""),
-        }
+    The AH login JS constructs some URLs (like /login/api/login) with hardcoded
+    absolute paths that can't be rewritten. This handler finds the active session
+    and proxies through it.
+    """
+    if not _active_sessions:
+        return web.Response(status=404, text="No active login session")
 
-    async def _handle_callback(self, request: web.Request) -> web.Response:
-        """Handle the callback with the auth code."""
+    # Use the most recent (typically only) session
+    session = next(iter(_active_sessions.values()))
+    proxy_base = f"{session.proxy_base_url}/{session.session_id}"
+
+    # Get the full path after /login/ (the match_info key from the route)
+    path_info = "login/" + request.match_info.get("path_info", "")
+
+    return await _do_proxy(request, path_info, proxy_base, session)
+
+
+async def handle_proxy_request(request: web.Request) -> web.Response:
+    """Handle all proxy requests (registered as a HA view)."""
+    session_id = request.match_info.get("session_id", "")
+    path_info = request.match_info.get("path_info", "")
+
+    session = _active_sessions.get(session_id)
+    if not session:
+        return web.Response(status=404, text="Invalid or expired login session")
+
+    proxy_base = f"{session.proxy_base_url}/{session_id}"
+
+    # Handle callback
+    if path_info == "callback":
         code = request.query.get("code", "")
-        if code and not self._code_future.done():
-            self._code_future.set_result(code)
-            _LOGGER.debug("Auth code received (length=%d)", len(code))
-        return web.Response(
-            text=LOGIN_SUCCESS_HTML,
-            content_type="text/html",
+        if code and not session.code_future.done():
+            session.code_future.set_result(code)
+            _LOGGER.debug("Auth code received for session %s", session_id)
+        return web.Response(text=LOGIN_SUCCESS_HTML, content_type="text/html")
+
+    return await _do_proxy(request, path_info, proxy_base, session)
+
+
+async def _do_proxy(
+    request: web.Request, path_info: str, proxy_base: str, session: LoginSession
+) -> web.Response:
+    """Proxy a request to login.ah.nl."""
+    # Proxy to login.ah.nl
+    target_url = f"{LOGIN_BASE_URL}/{path_info}"
+    if request.query_string:
+        target_url += f"?{request.query_string}"
+
+    body = await request.read() if request.can_read_body else None
+
+    # Forward headers, rewriting origin/referer to match login.ah.nl
+    headers = {}
+    for key, value in request.headers.items():
+        lower = key.lower()
+        if lower in ("host", "transfer-encoding"):
+            continue
+        if lower == "origin":
+            headers[key] = LOGIN_BASE_URL
+            continue
+        if lower == "referer":
+            # Rewrite referer: replace proxy base with login.ah.nl
+            headers[key] = value.replace(proxy_base, LOGIN_BASE_URL)
+            continue
+        headers[key] = value
+    headers["Host"] = LOGIN_HOST
+    headers["Accept-Encoding"] = "gzip, deflate"
+
+    async with aiohttp.ClientSession() as client:
+        async with client.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            data=body,
+            allow_redirects=False,
+            ssl=True,
+        ) as resp:
+            resp_body = await resp.read()
+            resp_headers = dict(resp.headers)
+
+    # Rewrite Location header
+    location = resp_headers.get("Location", "")
+    if location.startswith("appie://"):
+        parsed = urlparse(location)
+        resp_headers["Location"] = f"{proxy_base}/callback?{parsed.query}"
+    elif LOGIN_HOST in location:
+        resp_headers["Location"] = location.replace(
+            f"https://{LOGIN_HOST}", proxy_base
         )
 
-    async def _handle_proxy(self, request: web.Request) -> web.Response:
-        """Proxy requests to login.ah.nl, rewriting redirects."""
-        target_url = f"{LOGIN_BASE_URL}/{request.match_info['path_info']}"
-        if request.query_string:
-            target_url += f"?{request.query_string}"
+    # Strip security headers
+    for hdr in ("Content-Security-Policy", "Strict-Transport-Security",
+                "X-Frame-Options", "Content-Encoding"):
+        resp_headers.pop(hdr, None)
 
-        # Read request body
-        body = await request.read() if request.can_read_body else None
+    # Rewrite body content
+    content_type = resp_headers.get("Content-Type", "")
+    if any(ct in content_type for ct in ("text/html", "javascript", "json", "text/css")):
+        text = resp_body.decode("utf-8", errors="replace")
+        text = text.replace("appie://login-exit", f"{proxy_base}/callback")
+        text = text.replace(f"https://{LOGIN_HOST}", proxy_base)
+        # Rewrite absolute paths (Next.js assets) to go through proxy
+        # The AH login page uses paths like /login/_next/static/...
+        text = text.replace('"/_next/', f'"{proxy_base}/_next/')
+        text = text.replace("'/_next/", f"'{proxy_base}/_next/")
+        text = text.replace('`/_next/', f'`{proxy_base}/_next/')
+        text = text.replace('"/login/_next/', f'"{proxy_base}/login/_next/')
+        text = text.replace("'/login/_next/", f"'{proxy_base}/login/_next/")
+        text = text.replace('`/login/_next/', f'`{proxy_base}/login/_next/')
+        text = text.replace('"/login/api/', f'"{proxy_base}/login/api/')
+        text = text.replace("'/login/api/", f"'{proxy_base}/login/api/")
+        text = text.replace('`/login/api/', f'`{proxy_base}/login/api/')
+        text = text.replace('"/login/static/', f'"{proxy_base}/login/static/')
+        text = text.replace("'/login/static/", f"'{proxy_base}/login/static/")
+        text = text.replace('url(/login/static/', f'url({proxy_base}/login/static/')
+        resp_body = text.encode("utf-8")
+        resp_headers["Content-Length"] = str(len(resp_body))
 
-        # Forward headers, adjusting Host
-        headers = dict(request.headers)
-        headers["Host"] = LOGIN_HOST
-        headers.pop("Transfer-Encoding", None)
-        # Don't request brotli - aiohttp can't decode it without Brotli lib
-        headers["Accept-Encoding"] = "gzip, deflate"
+    # Build response
+    response = web.Response(status=resp.status, body=resp_body)
+    for key, value in resp_headers.items():
+        lower = key.lower()
+        if lower in ("transfer-encoding", "content-length", "content-encoding"):
+            continue
+        if lower == "set-cookie":
+            response.headers.add(key, _sanitize_cookie(value))
+        else:
+            response.headers[key] = value
 
-        async with aiohttp.ClientSession() as session:
-            async with session.request(
-                method=request.method,
-                url=target_url,
-                headers=headers,
-                data=body,
-                allow_redirects=False,
-                ssl=True,
-            ) as resp:
-                resp_body = await resp.read()
-                resp_headers = dict(resp.headers)
+    return response
 
-        # Check for appie:// redirect in Location header
-        location = resp_headers.get("Location", "")
-        if location.startswith("appie://"):
-            parsed = urlparse(location)
-            resp_headers["Location"] = (
-                f"{self._local_origin}/callback?{parsed.query}"
-            )
-        elif LOGIN_HOST in location:
-            resp_headers["Location"] = location.replace(
-                f"https://{LOGIN_HOST}", self._local_origin
-            )
 
-        # Strip security headers that block the proxy
-        for hdr in ("Content-Security-Policy", "Strict-Transport-Security",
-                    "X-Frame-Options", "Content-Encoding"):
-            resp_headers.pop(hdr, None)
+async def exchange_code(code: str) -> dict[str, str]:
+    """Exchange the authorization code for tokens."""
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            TOKEN_EXCHANGE_URL,
+            json={"clientId": _CLIENT_ID, "code": code},
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Content-Type": "application/json",
+            },
+        ) as resp:
+            if resp.status >= 400:
+                body = await resp.text()
+                raise AuthenticationError(
+                    f"Token exchange failed ({resp.status}): {body[:200]}"
+                )
+            data = await resp.json()
 
-        # Rewrite cookies for localhost (strip Secure/Domain/SameSite)
-        if "Set-Cookie" in resp_headers:
-            # aiohttp collapses multi-value headers; handle raw
-            pass  # we'll handle below
-
-        # Rewrite body content
-        content_type = resp_headers.get("Content-Type", "")
-        if any(ct in content_type for ct in ("text/html", "javascript", "json")):
-            text = resp_body.decode("utf-8", errors="replace")
-            text = text.replace("appie://login-exit", f"{self._local_origin}/callback")
-            text = text.replace(f"https://{LOGIN_HOST}", self._local_origin)
-            resp_body = text.encode("utf-8")
-            resp_headers["Content-Length"] = str(len(resp_body))
-
-        # Build response, sanitizing cookies
-        response = web.Response(
-            status=resp.status,
-            body=resp_body,
-        )
-        # Copy headers except problematic ones
-        for key, value in resp_headers.items():
-            lower = key.lower()
-            if lower in ("transfer-encoding", "content-length", "content-encoding"):
-                continue
-            if lower == "set-cookie":
-                response.headers.add(key, _sanitize_cookie(value))
-            else:
-                response.headers[key] = value
-
-        return response
+    return {
+        "access_token": data["access_token"],
+        "refresh_token": data["refresh_token"],
+        "member_id": data.get("member_id", ""),
+    }
 
 
 def _sanitize_cookie(cookie: str) -> str:
-    """Strip Secure, SameSite, and Domain from Set-Cookie for localhost use."""
+    """Strip Secure, SameSite, and Domain from Set-Cookie for proxy use."""
     parts = cookie.split(";")
     out = parts[:1]
     for part in parts[1:]:
@@ -228,20 +254,6 @@ def _sanitize_cookie(cookie: str) -> str:
             continue
         out.append(part)
     return ";".join(out)
-
-
-async def async_login_browser(timeout: float = 300) -> tuple[LoginProxy, str]:
-    """Start the login proxy and return (proxy, login_url).
-
-    The caller should:
-    1. Present login_url to the user
-    2. await proxy.wait_for_code(timeout)
-    3. await proxy.exchange_code(code)
-    4. await proxy.stop()
-    """
-    proxy = LoginProxy()
-    login_url = await proxy.start()
-    return proxy, login_url
 
 
 async def async_refresh_token(refresh_token: str) -> dict[str, str]:
