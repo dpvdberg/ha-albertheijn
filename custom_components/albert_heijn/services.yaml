@@ -80,6 +80,20 @@ reopen_order:
           min: 1
           mode: box
 
+remove_from_order:
+  name: Remove from Order
+  description: Remove a product from the current active order by product ID.
+  fields:
+    product_id:
+      name: Product ID
+      description: The webshop product ID to remove.
+      required: true
+      example: 553353
+      selector:
+        number:
+          min: 1
+          mode: box
+
 revert_order:
   name: Revert Order
   description: Revert a reopened order back to its submitted state.

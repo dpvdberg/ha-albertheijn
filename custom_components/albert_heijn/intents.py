@@ -14,12 +14,14 @@ from .coordinator import AlbertHeijnCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 INTENT_ADD_TO_ORDER = "AlbertHeijnAddToOrder"
+INTENT_REMOVE_FROM_ORDER = "AlbertHeijnRemoveFromOrder"
 INTENT_ORDER_STATUS = "AlbertHeijnOrderStatus"
 
 
 async def async_setup_intents(hass: HomeAssistant) -> None:
     """Set up intent handlers for Albert Heijn."""
     intent.async_register(hass, AddToOrderIntentHandler())
+    intent.async_register(hass, RemoveFromOrderIntentHandler())
     intent.async_register(hass, OrderStatusIntentHandler())
 
 
@@ -89,6 +91,56 @@ class AddToOrderIntentHandler(intent.IntentHandler):
         response = intent_obj.create_response()
         response.async_set_speech(
             f"{quantity}x {product.title} ({product.unit_size}) toegevoegd aan je bestelling."
+        )
+        return response
+
+
+class RemoveFromOrderIntentHandler(intent.IntentHandler):
+    """Handle removing items from the Albert Heijn order via Assist."""
+
+    intent_type = INTENT_REMOVE_FROM_ORDER
+    slot_schema = {
+        "product_name": intent.non_empty_string,
+    }
+
+    async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
+        """Handle the intent."""
+        slots = self.async_validate_slots(intent_obj.slots)
+        product_name = slots["product_name"]["value"]
+
+        coordinator = _get_coordinator(intent_obj.hass)
+
+        try:
+            products = await coordinator.api.search_products(product_name, 5)
+        except AlbertHeijnApiError as err:
+            raise intent.IntentHandleError(
+                f"Kon niet zoeken naar '{product_name}': {err}"
+            ) from err
+
+        if not products:
+            raise intent.IntentHandleError(
+                f"Geen producten gevonden voor '{product_name}'"
+            )
+
+        product = products[0]
+
+        try:
+            summary = await coordinator.api.get_active_order_summary()
+            order_id = summary["id"] if summary else None
+            await coordinator.api.add_to_order(
+                [{"productId": product.id, "quantity": 0}],
+                order_id=order_id,
+            )
+        except AlbertHeijnApiError as err:
+            raise intent.IntentHandleError(
+                f"Kon '{product.title}' niet verwijderen: {err}"
+            ) from err
+
+        await coordinator.async_request_refresh()
+
+        response = intent_obj.create_response()
+        response.async_set_speech(
+            f"{product.title} is verwijderd uit je bestelling."
         )
         return response
 

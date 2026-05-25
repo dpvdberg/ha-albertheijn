@@ -19,6 +19,13 @@ intents:
           - "when is [my] [next] delivery"
           - "what's in [my] order"
           - "[albert heijn|grocery] delivery status"
+  AlbertHeijnRemoveFromOrder:
+    data:
+      - sentences:
+          - "remove {product_name} from [my] order"
+          - "delete {product_name} from [my] order"
+          - "take {product_name} off [my] order"
+          - "remove {product_name} from [albert heijn|groceries]"
 lists:
   product_name:
     wildcard: true

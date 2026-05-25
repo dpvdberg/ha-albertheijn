@@ -23,6 +23,14 @@ intents:
           - "wanneer [komen|komt] de boodschappen [bezorging]"
           - "hoe staat het met [mijn] bestelling"
           - "wat zit er in [mijn] bestelling"
+  AlbertHeijnRemoveFromOrder:
+    data:
+      - sentences:
+          - "verwijder {product_name} uit [mijn] bestelling"
+          - "haal {product_name} uit [mijn] bestelling"
+          - "{product_name} verwijderen [uit bestelling]"
+          - "doe {product_name} weg uit [mijn] bestelling"
+          - "{product_name} van [mijn] bestelling [af]halen"
 lists:
   product_name:
     wildcard: true

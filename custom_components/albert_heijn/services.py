@@ -20,6 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_SEARCH_PRODUCTS = "search_products"
 SERVICE_ADD_TO_ORDER = "add_to_order"
 SERVICE_ADD_PRODUCT_BY_NAME = "add_product_by_name"
+SERVICE_REMOVE_FROM_ORDER = "remove_from_order"
 SERVICE_REOPEN_ORDER = "reopen_order"
 SERVICE_REVERT_ORDER = "revert_order"
 
@@ -55,6 +56,12 @@ ADD_PRODUCT_BY_NAME_SCHEMA = vol.Schema(
         vol.Optional(ATTR_QUANTITY, default=1): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=99)
         ),
+    }
+)
+
+REMOVE_FROM_ORDER_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_PRODUCT_ID): vol.Coerce(int),
     }
 )
 
@@ -175,6 +182,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             }
         }
 
+    async def handle_remove_from_order(call: ServiceCall) -> None:
+        """Handle remove from order service call."""
+        coordinator = _get_coordinator(hass)
+        product_id = call.data[ATTR_PRODUCT_ID]
+
+        try:
+            summary = await coordinator.api.get_active_order_summary()
+            order_id = summary["id"] if summary else None
+            await coordinator.api.add_to_order(
+                [{"productId": product_id, "quantity": 0}],
+                order_id=order_id,
+            )
+        except AlbertHeijnApiError as err:
+            raise HomeAssistantError(f"Failed to remove from order: {err}") from err
+
+        await coordinator.async_request_refresh()
+
     async def handle_reopen_order(call: ServiceCall) -> None:
         """Handle reopen order service call."""
         coordinator = _get_coordinator(hass)
@@ -224,6 +248,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN,
+        SERVICE_REMOVE_FROM_ORDER,
+        handle_remove_from_order,
+        schema=REMOVE_FROM_ORDER_SCHEMA,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
         SERVICE_REOPEN_ORDER,
         handle_reopen_order,
         schema=ORDER_ID_SCHEMA,
@@ -242,5 +273,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_SEARCH_PRODUCTS)
     hass.services.async_remove(DOMAIN, SERVICE_ADD_TO_ORDER)
     hass.services.async_remove(DOMAIN, SERVICE_ADD_PRODUCT_BY_NAME)
+    hass.services.async_remove(DOMAIN, SERVICE_REMOVE_FROM_ORDER)
     hass.services.async_remove(DOMAIN, SERVICE_REOPEN_ORDER)
     hass.services.async_remove(DOMAIN, SERVICE_REVERT_ORDER)
