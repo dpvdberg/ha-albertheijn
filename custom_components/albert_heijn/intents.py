@@ -66,7 +66,8 @@ class SearchProductsIntentHandler(intent.IntentHandler):
         lines = []
         for p in products:
             orderable = "✓" if p.is_orderable else "✗"
-            lines.append(f"- [{orderable}] {p.title} ({p.brand}, {p.unit_size}) €{p.price:.2f} → id:{p.id}")
+            price = f"€{p.price:.2f}" if p.price else "?"
+            lines.append(f"- [{orderable}] {p.title} ({p.brand}, {p.unit_size}) {price} → id:{p.id}")
 
         response = intent_obj.create_response()
         response.async_set_speech(
@@ -159,7 +160,8 @@ class ListOrderItemsIntentHandler(intent.IntentHandler):
 
         lines = []
         for item in items:
-            lines.append(f"- {item.quantity}x {item.title} ({item.unit_size}) €{item.price:.2f} → id:{item.product_id}")
+            price = f"€{item.price:.2f}" if item.price else "?"
+            lines.append(f"- {item.quantity}x {item.title} ({item.unit_size}) {price} → id:{item.product_id}")
 
         response = intent_obj.create_response()
         response.async_set_speech(

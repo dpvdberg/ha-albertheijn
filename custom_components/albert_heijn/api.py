@@ -399,7 +399,7 @@ class AlbertHeijnApi:
                     id=p["webshopId"],
                     title=p.get("title", ""),
                     brand=p.get("brand", ""),
-                    price=p.get("currentPrice", 0),
+                    price=p.get("currentPrice") or p.get("priceBeforeBonus") or 0,
                     unit_size=p.get("salesUnitSize", ""),
                     is_orderable=p.get("isOrderable", False),
                     image_url=image_url,

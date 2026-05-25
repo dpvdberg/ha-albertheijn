@@ -110,7 +110,7 @@ async def main() -> None:
             products = await api.search_products("melk", 5)
             for p in products:
                 orderable = "✓" if p.is_orderable else "✗"
-                price_str = f"€{p.price:.2f}" if p.price is not None else "N/A"
+                price_str = f"€{p.price:.2f}" if p.price else "N/A"
                 print(f"  [{orderable}] {p.title} ({p.unit_size}) - {price_str}")
                 print(f"      ID: {p.id} | Brand: {p.brand}")
             print()
@@ -136,6 +136,23 @@ async def main() -> None:
             print()
         except AlbertHeijnApiError as e:
             print(f"  ✗ Failed: {e}\n")
+
+        # --- Test 6: List order items ---
+        if fulfillments:
+            modifiable = next((f for f in fulfillments if f.modifiable), fulfillments[0])
+            print(f"=== Order Items (#{modifiable.order_id}) ===\n")
+            try:
+                items = await api.get_order_items(modifiable.order_id)
+                if not items:
+                    print("  Order is empty.\n")
+                else:
+                    for item in items:
+                        price_str = f"€{item.price:.2f}" if item.price else "N/A"
+                        print(f"  {item.quantity}x {item.title} ({item.unit_size}) - {price_str}")
+                        print(f"      ID: {item.product_id} | Brand: {item.brand}")
+                    print(f"\n  Total: {len(items)} items\n")
+            except AlbertHeijnApiError as e:
+                print(f"  ✗ Failed: {e}\n")
 
         # Save updated tokens (may have been refreshed)
         updated_tokens = {
