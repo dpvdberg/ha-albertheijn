@@ -62,6 +62,10 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Start the login proxy and show the external auth step."""
+        if self._proxy is not None:
+            # Called again after login completed - advance to done step
+            return self.async_external_step_done(next_step_id="login_done")
+
         # Extract the hostname from HA's URL to use for the proxy
         ha_url = get_url(self.hass)
         hostname = urlparse(ha_url).hostname or "127.0.0.1"
@@ -70,7 +74,7 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         login_url = await self._proxy.start()
 
         # Start background task to wait for the auth code
-        self._login_task = asyncio.ensure_future(self._wait_for_login())
+        self._login_task = self.hass.async_create_task(self._wait_for_login())
 
         return self.async_external_step(step_id="login", url=login_url)
 
@@ -91,6 +95,8 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         finally:
             if self._proxy:
                 await self._proxy.stop()
+            # Signal the config flow to advance
+            self.hass.config_entries.flow.async_configure(flow_id=self.flow_id)
 
     async def async_step_login_done(
         self, user_input: dict[str, Any] | None = None
