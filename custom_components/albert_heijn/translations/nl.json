@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Albert Heijn",
+        "description": "Klik op verzenden om de Albert Heijn loginpagina in je browser te openen. Log daar in om je account te koppelen."
+      },
+      "login": {
+        "title": "Inloggen bij Albert Heijn",
+        "description": "Voltooi het inloggen in je browser. Deze pagina wordt automatisch bijgewerkt."
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw inloggen",
+        "description": "Je sessie is verlopen. Klik op verzenden om opnieuw in te loggen via je browser."
+      }
+    },
+    "error": {
+      "invalid_auth": "Authenticatie mislukt. Probeer het opnieuw.",
+      "cannot_connect": "Kan geen verbinding maken met Albert Heijn. Probeer het later opnieuw.",
+      "unknown": "Er is een onverwachte fout opgetreden."
+    },
+    "abort": {
+      "reauth_successful": "Opnieuw inloggen gelukt.",
+      "already_configured": "Dit account is al geconfigureerd.",
+      "login_failed": "Inloggen mislukt of verlopen. Probeer het opnieuw.",
+      "invalid_auth": "Tokenvalidatie mislukt. Probeer het opnieuw.",
+      "cannot_connect": "Kan geen verbinding maken met Albert Heijn om login te verifi\u00ebren."
+    }
+  }
+}

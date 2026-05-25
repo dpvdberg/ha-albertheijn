@@ -1,0 +1,12 @@
+{
+  "domain": "albert_heijn",
+  "name": "Albert Heijn",
+  "codeowners": ["@dpvdberg"],
+  "config_flow": true,
+  "documentation": "https://github.com/dpvdberg/ha-albertheijn",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/dpvdberg/ha-albertheijn/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

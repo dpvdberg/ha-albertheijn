@@ -1,0 +1,6 @@
+{
+  "name": "Albert Heijn",
+  "render_readme": true,
+  "domains": ["albert_heijn"],
+  "homeassistant": "2024.1.0"
+}

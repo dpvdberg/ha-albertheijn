@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Albert Heijn",
+        "description": "Click submit to open the Albert Heijn login page in your browser. Log in there to connect your account."
+      },
+      "login": {
+        "title": "Log in to Albert Heijn",
+        "description": "Complete the login in your browser. This page will update automatically when done."
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Albert Heijn",
+        "description": "Your session has expired. Click submit to log in again via your browser."
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Please try again.",
+      "cannot_connect": "Could not connect to Albert Heijn. Try again later.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication successful.",
+      "already_configured": "This account is already configured.",
+      "login_failed": "Login failed or timed out. Please try again.",
+      "invalid_auth": "Token validation failed. Please try again.",
+      "cannot_connect": "Could not connect to Albert Heijn to verify login."
+    }
+  }
+}

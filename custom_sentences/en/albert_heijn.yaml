@@ -1,0 +1,28 @@
+language: en
+intents:
+  AlbertHeijnAddToOrder:
+    data:
+      - sentences:
+          - "add {product_name} to [my] order"
+          - "add {quantity} {product_name} to [my] order"
+          - "order {product_name}"
+          - "order {quantity} {product_name}"
+          - "add {product_name} to [albert heijn|groceries]"
+          - "add {quantity} {product_name} to [albert heijn|groceries]"
+          - "put {product_name} on [my] order"
+          - "put {quantity} {product_name} on [my] order"
+  AlbertHeijnOrderStatus:
+    data:
+      - sentences:
+          - "[what is] [the] status [of] [my] [albert heijn] order"
+          - "when will [my] groceries be delivered"
+          - "when is [my] [next] delivery"
+          - "what's in [my] order"
+          - "[albert heijn|grocery] delivery status"
+lists:
+  product_name:
+    wildcard: true
+  quantity:
+    range:
+      from: 1
+      to: 99

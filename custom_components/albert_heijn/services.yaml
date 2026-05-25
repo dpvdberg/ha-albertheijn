@@ -1,0 +1,95 @@
+search_products:
+  name: Search Products
+  description: Search for products in the Albert Heijn webshop.
+  fields:
+    query:
+      name: Query
+      description: The search term to find products.
+      required: true
+      example: "melk"
+      selector:
+        text:
+    limit:
+      name: Limit
+      description: Maximum number of results to return.
+      required: false
+      default: 5
+      example: 10
+      selector:
+        number:
+          min: 1
+          max: 30
+
+add_to_order:
+  name: Add to Order
+  description: Add a product to the current active order by product ID.
+  fields:
+    product_id:
+      name: Product ID
+      description: The webshop product ID to add.
+      required: true
+      example: 553353
+      selector:
+        number:
+          min: 1
+          mode: box
+    quantity:
+      name: Quantity
+      description: Number of items to add (0 to remove).
+      required: false
+      default: 1
+      example: 2
+      selector:
+        number:
+          min: 0
+          max: 99
+
+add_product_by_name:
+  name: Add Product by Name
+  description: Search for a product by name and add the first orderable match to the current order.
+  fields:
+    product_name:
+      name: Product Name
+      description: The product name or search term.
+      required: true
+      example: "AH Halfvolle melk"
+      selector:
+        text:
+    quantity:
+      name: Quantity
+      description: Number of items to add.
+      required: false
+      default: 1
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 99
+
+reopen_order:
+  name: Reopen Order
+  description: Reopen a submitted order to allow adding or removing items.
+  fields:
+    order_id:
+      name: Order ID
+      description: The order ID to reopen.
+      required: true
+      example: 316501042
+      selector:
+        number:
+          min: 1
+          mode: box
+
+revert_order:
+  name: Revert Order
+  description: Revert a reopened order back to its submitted state.
+  fields:
+    order_id:
+      name: Order ID
+      description: The order ID to revert.
+      required: true
+      example: 316501042
+      selector:
+        number:
+          min: 1
+          mode: box

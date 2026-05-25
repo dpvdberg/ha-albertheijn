@@ -1,0 +1,32 @@
+language: nl
+intents:
+  AlbertHeijnAddToOrder:
+    data:
+      - sentences:
+          - "voeg {product_name} toe aan [mijn] bestelling"
+          - "voeg {quantity} {product_name} toe aan [mijn] bestelling"
+          - "zet {product_name} op [mijn] bestelling"
+          - "zet {quantity} {product_name} op [mijn] bestelling"
+          - "bestel {product_name}"
+          - "bestel {quantity} {product_name}"
+          - "voeg {product_name} toe aan albert heijn"
+          - "voeg {quantity} {product_name} toe aan albert heijn"
+          - "doe {product_name} [er]bij [mijn] bestelling"
+          - "doe {quantity} {product_name} [er]bij [mijn] bestelling"
+          - "{product_name} toevoegen [aan bestelling]"
+          - "{quantity} {product_name} toevoegen [aan bestelling]"
+  AlbertHeijnOrderStatus:
+    data:
+      - sentences:
+          - "[wat is] [de] status [van] [mijn] [albert heijn] bestelling"
+          - "wanneer wordt [mijn] bestelling bezorgd"
+          - "wanneer [komen|komt] de boodschappen [bezorging]"
+          - "hoe staat het met [mijn] bestelling"
+          - "wat zit er in [mijn] bestelling"
+lists:
+  product_name:
+    wildcard: true
+  quantity:
+    range:
+      from: 1
+      to: 99
