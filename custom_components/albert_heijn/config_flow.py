@@ -95,8 +95,13 @@ class AlbertHeijnConfigFlow(ConfigFlow, domain=DOMAIN):
         finally:
             if self._proxy:
                 await self._proxy.stop()
-            # Signal the config flow to advance
-            self.hass.config_entries.flow.async_configure(flow_id=self.flow_id)
+            # Signal the config flow to advance (must be scheduled, not awaited,
+            # to avoid re-entry issues)
+            self.hass.async_create_task(
+                self.hass.config_entries.flow.async_configure(
+                    flow_id=self.flow_id
+                )
+            )
 
     async def async_step_login_done(
         self, user_input: dict[str, Any] | None = None
