@@ -366,6 +366,8 @@ class AHOpenOrderCountSensor(AHBaseSensor):
                     "state": details.state if details else None,
                     "items": details.total_items if details else None,
                     "closing_time": details.closing_time if details else None,
+                    "delivery_start": details.delivery_start if details else None,
+                    "delivery_end": details.delivery_end if details else None,
                 }
             )
         return {"orders": orders}
