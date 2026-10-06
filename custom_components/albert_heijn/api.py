@@ -284,7 +284,7 @@ class AlbertHeijnApi:
 }"""
 
         data = await self._graphql(query)
-        results = data.get("orderFulfillments", {}).get("result", [])
+        results = data.get("orderFulfillments", {}).get("result") or []
 
         fulfillments = []
         for r in results:
